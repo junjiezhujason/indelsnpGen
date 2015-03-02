@@ -11,6 +11,8 @@ int gencore::nextseq(){
 }
 
 int gencore::gen(){
+    // Generate the target sequence with simulated SNPs/INDELs
+    // 
     pos = 0;
     int rep;
     double r;
@@ -26,19 +28,16 @@ int gencore::gen(){
         exit(1);
     }
     L = atoi(ctg->vals[rep]);
-    ni = 0; gi = L*ri;
-    nd = 0; gd = L*rd;
-    ns = 0; gs = L*rs;
+    ni = 0; gi = L*ri; // number of total insertions to be simulated 
+    nd = 0; gd = L*rd; // number of total deletions to be simulated
+    ns = 0; gs = L*rs; // number of total snps to be simulated
     pm = 0;
 
     M(25);
     while(pos < L){
         c = ref->at(pos);
-        if(c == 'N'){
-            r = 1; // no chance of getting variant
-        }else{ 
-            r = gsl_rng_uniform(rng);
-        }
+        r = gsl_rng_uniform(rng);
+        // NEED TO REDO CALCULATION FOR SNP INDEL
         if(r < mutation_rate()){
           r = gsl_rng_uniform(rng);
           if(r < ins_rate()){ //insertion
@@ -49,7 +48,7 @@ int gencore::gen(){
                 rep = 4 * gsl_rng_uniform(rng) + 1;
                 rep = rep * 20;
             }
-            ins(rep);
+            if (c !='N' && c !='n') ins(rep); // do not change N/n
             pm = pos; ni++;
             M(25);
           }else if(r < ins_rate() + del_rate()){ //deletion
@@ -60,24 +59,27 @@ int gencore::gen(){
                 rep = 4 * gsl_rng_uniform(rng) + 1;
                 rep = rep * 20;
             }
-            del(rep);
+            if (c !='N' && c !='n') del(rep); // do not change N/n
             pm = pos; nd++;
             M(25);
           }else{ //mutation
-            SNP(1);
+            if (c !='N' && c !='n') SNP(1); // do not change N/n
             pm = pos; ns++;
             M(25);
           }
         }else{ //match
             M(1);
         }
-        ref->advanceto(pos-10);
+        ref->advanceto(pos-10); // update ref. sequence reading window
     }
     write('\0');
     return 0;
 }
 
 int gencore::ins(int k){
+    // insert random sequence of length k
+    // write this sequence to the target sequence fasta 
+    // record the insertion event in the VCF/BCF file
     char altstr[102];
     char refstr[2];
     int i, s;
@@ -112,6 +114,8 @@ int gencore::ins(int k){
 }
 
 int gencore::del(int k){
+    // delete sequence of length k; DO NOT write this sequence to the
+    // target sequence fasta; record the event in the VCF/BCF file
     char altstr[2];
     char refstr[102];
     int i;
@@ -163,9 +167,15 @@ int gencore::SNP(int k){
     for(i = 0; i < k; i++){
         c = ref->at(pos);
         if(c == '\0') break;
+        // lowercase->uppercase correction
+        if(c == 'a') c = 'A';
+        if(c == 'c') c = 'C';
+        if(c == 'g') c = 'G';
+        if(c == 't') c = 'T';
         do{
             snp = sym[(int)(gsl_rng_uniform(rng)*nsym)];
         }while(snp == c);
+
         b->rid = rid;
         b->pos = pos;
 
@@ -186,6 +196,7 @@ int gencore::SNP(int k){
 }
 
 int gencore::write(char c){
+    // write a given base to the output fasta file
     static char temp[81];
     static int x = 0;
     if(c){
@@ -201,8 +212,10 @@ int gencore::write(char c){
 }
 
 double gencore::mutation_rate(){
+    // compute the probablity of mutation at a given position
+    // FIX THIS
     if(pos - pm <= 25) return 0;
-    if(L - pos <= 25) return 0;
+    if(L - pos - 25*(gi+gd+gs-ni-nd-ns) <= 0) return 0;
     return (double)(gi+gd+gs-ni-nd-ns)/(L-pos-24*(gi+gd+gs-ni-nd-ns));
 }
 
